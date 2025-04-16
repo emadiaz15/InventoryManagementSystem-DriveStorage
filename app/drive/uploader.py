@@ -76,6 +76,40 @@ def download_file(file_id: str) -> bytes:
 # Funciones para integración con FastAPI
 # ===============================
 
+def list_subproduct_images(subproduct_id: str) -> list[dict]:
+    """
+    Lista las imágenes de subproducto según su folder_id.
+    Nota: Actualmente retorna todos los archivos en la carpeta de subproductos.
+    """
+    service = get_drive_service()
+    query = f"'{settings.SUBPRODUCTS_IMAGE_FOLDER_ID}' in parents and trashed = false"
+
+    results = service.files().list(
+        q=query,
+        spaces='drive',
+        fields='files(id, name, mimeType, createdTime, modifiedTime)',
+    ).execute()
+
+    return results.get('files', [])
+
+
+def list_product_images(product_id: str) -> list[dict]:
+    """
+    Lista las imágenes de producto según su folder_id.
+    Nota: Actualmente retorna los archivos de la carpeta general de productos.
+    Si querés que cada producto tenga su propia carpeta, esto debería adaptarse.
+    """
+    service = get_drive_service()
+    query = f"'{settings.PRODUCTS_IMAGE_FOLDER_ID}' in parents and trashed = false"
+
+    results = service.files().list(
+        q=query,
+        spaces='drive',
+        fields='files(id, name, mimeType, createdTime, modifiedTime)',
+    ).execute()
+
+    return results.get('files', [])
+
 def upload_file(file: UploadFile, folder_type: str = "profile") -> str:
     """
     Sube un archivo a la carpeta correspondiente según el tipo (profile, product, subproduct).
