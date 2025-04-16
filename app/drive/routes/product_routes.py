@@ -1,13 +1,14 @@
 import os
 import io
 from fastapi import APIRouter, UploadFile, File, HTTPException, Header
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from app.drive.auth import verify_jwt_token
 from app.drive.uploader import (
     upload_product_image,
     list_product_images,
     replace_product_image,
     download_product_image,
+    delete_product_image,
 )
 
 router = APIRouter(prefix="/product", tags=["Product Images"])
@@ -68,3 +69,17 @@ async def download_product_file(
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al descargar la imagen: {str(e)}")
+
+
+@router.delete("/{product_id}/delete/{file_id}")
+async def delete_product_file(
+    product_id: str,
+    file_id: str,
+    x_api_key: str = Header(...)
+):
+    verify_jwt_token(x_api_key)
+    try:
+        delete_product_image(file_id)
+        return {"message": "Imagen eliminada exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar la imagen: {str(e)}")
