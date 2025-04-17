@@ -6,14 +6,17 @@ from .config import settings
 
 ALGORITHM = "HS256"
 
-def verify_jwt_token(authorization: str = Header(..., description="Bearer <token>")) -> dict:
+def verify_jwt_token(
+    x_api_key: str = Header(..., alias="x-api-key", description="Token JWT generado por el backend Django")
+) -> dict:
     """
-    Verifica el token JWT enviado en el encabezado Authorization
-    y retorna el payload validado.
+    Verifica el token JWT enviado en el encabezado x-api-key
+    (lo acepta con o sin prefijo 'Bearer ').
     """
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    token = authorization.split(" ", 1)[1]
+    # Asegurarnos de que siempre empiece con "Bearer "
+    bearer = x_api_key if x_api_key.startswith("Bearer ") else f"Bearer {x_api_key}"
+    token = bearer.split(" ", 1)[1]
+
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[ALGORITHM])
         exp = payload.get("exp")
@@ -23,5 +26,5 @@ def verify_jwt_token(authorization: str = Header(..., description="Bearer <token
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
 
-# Alias para usar de forma más semántica:
+# Alias semántico para usar como dependencia
 auth_dependency = verify_jwt_token
