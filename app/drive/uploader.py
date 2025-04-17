@@ -18,7 +18,10 @@ def get_drive_service():
 # --- Crea una subcarpeta si no existe ---
 def get_or_create_subfolder(name: str, parent_id: str) -> str:
     service = get_drive_service()
-    query = f"name='{name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    query = (
+        f"name='{name}' and '{parent_id}' in parents "
+        "and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    )
     results = service.files().list(q=query, fields="files(id, name)").execute()
     folders = results.get("files", [])
     if folders:
@@ -32,108 +35,143 @@ def get_or_create_subfolder(name: str, parent_id: str) -> str:
     folder = service.files().create(body=folder_metadata, fields="id").execute()
     return folder.get("id")
 
-# --- Subida genérica a una carpeta ---
-def upload_file_to_folder(file, filename: str, mimetype: str, folder_id: str) -> str:
+# --- Operaciones de bajo nivel: carga, reemplazo, eliminación, metadatos, descarga ---
+
+def _upload_file_to_folder(data: bytes, filename: str, mimetype: str, folder_id: str) -> str:
     service = get_drive_service()
-    file_metadata = {
-        "name": filename,
-        "parents": [folder_id]
-    }
-    media = MediaIoBaseUpload(io.BytesIO(file), mimetype=mimetype, resumable=True)
-    uploaded_file = service.files().create(
+    file_metadata = {"name": filename, "parents": [folder_id]}
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mimetype, resumable=True)
+    created = service.files().create(
         body=file_metadata,
         media_body=media,
         fields="id"
     ).execute()
-    return uploaded_file.get("id")
+    return created.get("id")
 
-# --- Reemplazo de archivo por ID ---
-def replace_file(file_id: str, new_file_data: bytes, new_filename: str, mimetype: str):
+
+def _replace_file_raw(file_id: str, data: bytes, new_filename: str, mimetype: str) -> str:
     service = get_drive_service()
-    media = MediaIoBaseUpload(io.BytesIO(new_file_data), mimetype=mimetype, resumable=True)
-    updated_file = service.files().update(
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mimetype, resumable=True)
+    updated = service.files().update(
         fileId=file_id,
         media_body=media,
         body={"name": new_filename}
     ).execute()
-    return updated_file.get("id")
+    return updated.get("id")
 
-# --- Eliminar archivo por ID ---
+
 def delete_file(file_id: str) -> None:
     service = get_drive_service()
     service.files().delete(fileId=file_id).execute()
 
-# --- Obtener metadatos del archivo ---
+
 def get_file_metadata(file_id: str) -> dict:
     service = get_drive_service()
-    metadata = service.files().get(fileId=file_id).execute()
-    return metadata
+    return service.files().get(fileId=file_id).execute()
 
-# --- Descargar archivo desde Drive ---
+
 def download_file(file_id: str) -> bytes:
     service = get_drive_service()
     request = service.files().get_media(fileId=file_id)
-    file_data = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_data, request)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
     done = False
     while not done:
-        status, done = downloader.next_chunk()
-    return file_data.getvalue()
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
 
 # ===============================
-# Funciones para integración con FastAPI
+# Wrappers de alto nivel para FastAPI
 # ===============================
+
+def upload_file(file: UploadFile, folder_type: str) -> str:
+    """
+    Sube un UploadFile al tipo de carpeta indicado:
+      - "profile"    → settings.PROFILE_IMAGE_FOLDER_ID
+      - "product"    → settings.PRODUCTS_IMAGE_FOLDER_ID
+      - "subproduct" → settings.SUBPRODUCTS_IMAGE_FOLDER_ID
+    """
+    content = file.file.read()
+    filename = file.filename
+    mimetype = file.content_type
+
+    if folder_type == "profile":
+        folder_id = settings.PROFILE_IMAGE_FOLDER_ID
+    elif folder_type == "product":
+        folder_id = settings.PRODUCTS_IMAGE_FOLDER_ID
+    elif folder_type == "subproduct":
+        folder_id = settings.SUBPRODUCTS_IMAGE_FOLDER_ID
+    else:
+        raise ValueError(f"Tipo de carpeta inválido: {folder_type}")
+
+    return _upload_file_to_folder(content, filename, mimetype, folder_id)
+
+
+def replace_file(file_id: str, new_file: UploadFile) -> str:
+    """
+    Reemplaza un archivo existente dado un UploadFile:
+    """
+    data = new_file.file.read()
+    filename = new_file.filename
+    mimetype = new_file.content_type
+    return _replace_file_raw(file_id, data, filename, mimetype)
+
 
 def upload_product_image(file: UploadFile, product_id: str) -> str:
     product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
-    return upload_file_to_folder(file.file.read(), file.filename, file.content_type, product_folder_id)
+    return _upload_file_to_folder(file.file.read(), file.filename, file.content_type, product_folder_id)
+
 
 def upload_subproduct_image(file: UploadFile, subproduct_id: str, product_id: str) -> str:
-    product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
-    subproduct_folder_id = get_or_create_subfolder(subproduct_id, product_folder_id)
-    return upload_file_to_folder(file.file.read(), file.filename, file.content_type, subproduct_folder_id)
+    parent_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
+    subfolder_id = get_or_create_subfolder(subproduct_id, parent_id)
+    return _upload_file_to_folder(file.file.read(), file.filename, file.content_type, subfolder_id)
+
 
 def list_product_images(product_id: str) -> list[dict]:
-    service = get_drive_service()
-    product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
-    query = f"'{product_folder_id}' in parents and trashed = false"
-    results = service.files().list(
+    folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
+    query = f"'{folder_id}' in parents and trashed=false"
+    results = get_drive_service().files().list(
         q=query,
         spaces='drive',
-        fields='files(id, name, mimeType, createdTime, modifiedTime)',
+        fields='files(id,name,mimeType,createdTime,modifiedTime)'
     ).execute()
     return results.get('files', [])
+
 
 def list_subproduct_images(subproduct_id: str, product_id: str) -> list[dict]:
-    service = get_drive_service()
-    product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
-    subproduct_folder_id = get_or_create_subfolder(subproduct_id, product_folder_id)
-    query = f"'{subproduct_folder_id}' in parents and trashed = false"
-    results = service.files().list(
+    parent_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
+    folder_id = get_or_create_subfolder(subproduct_id, parent_id)
+    query = f"'{folder_id}' in parents and trashed=false"
+    results = get_drive_service().files().list(
         q=query,
         spaces='drive',
-        fields='files(id, name, mimeType, createdTime, modifiedTime)',
+        fields='files(id,name,mimeType,createdTime,modifiedTime)'
     ).execute()
     return results.get('files', [])
 
+
 def replace_product_image(file: UploadFile, product_id: str, file_id: str) -> str:
-    return replace_file(file_id, file.file.read(), file.filename, file.content_type)
+    return _replace_file_raw(file_id, file.file.read(), file.filename, file.content_type)
+
 
 def replace_subproduct_image(file: UploadFile, subproduct_id: str, file_id: str) -> str:
-    return replace_file(file_id, file.file.read(), file.filename, file.content_type)
+    return _replace_file_raw(file_id, file.file.read(), file.filename, file.content_type)
+
 
 def delete_product_image(file_id: str) -> None:
     delete_file(file_id)
 
+
 def delete_subproduct_image(file_id: str) -> None:
     delete_file(file_id)
 
+
 def download_product_image(file_id: str) -> tuple[bytes, str]:
     metadata = get_file_metadata(file_id)
-    content = download_file(file_id)
-    return content, metadata.get("name")
+    return download_file(file_id), metadata.get("name")
+
 
 def download_subproduct_image(file_id: str) -> tuple[bytes, str]:
     metadata = get_file_metadata(file_id)
-    content = download_file(file_id)
-    return content, metadata.get("name")
+    return download_file(file_id), metadata.get("name")
