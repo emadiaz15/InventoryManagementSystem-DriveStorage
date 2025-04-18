@@ -1,6 +1,6 @@
+import os
 import io
 import json
-from typing import Optional
 from fastapi import UploadFile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
@@ -9,11 +9,31 @@ from .config import settings
 
 # --- Inicializa el servicio de Google Drive ---
 def get_drive_service():
-    credentials = service_account.Credentials.from_service_account_info(
-        json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT),
-        scopes=["https://www.googleapis.com/auth/drive"]
-    )
-    return build("drive", "v3", credentials=credentials)
+    """
+    Inicializa el cliente de Google Drive usando:
+      1) Si existe el archivo JSON en disco (ruta en GOOGLE_SERVICE_ACCOUNT_JSON), lo lee de ahí.
+      2) Si no, toma el JSON completo de la variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT,
+         reemplaza las secuencias '\\n' por saltos de línea reales y lo carga.
+    """
+    scopes = ["https://www.googleapis.com/auth/drive"]
+    json_path = settings.GOOGLE_SERVICE_ACCOUNT_JSON
+
+    if os.path.isfile(json_path):
+        creds = service_account.Credentials.from_service_account_file(
+            json_path,
+            scopes=scopes
+        )
+    else:
+        info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT or "{}")
+        # Asegurarnos de que el private_key tenga saltos de línea reales
+        if isinstance(info.get("private_key"), str):
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
+        creds = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=scopes
+        )
+
+    return build("drive", "v3", credentials=creds)
 
 # --- Crea una subcarpeta si no existe ---
 def get_or_create_subfolder(name: str, parent_id: str) -> str:
@@ -27,22 +47,22 @@ def get_or_create_subfolder(name: str, parent_id: str) -> str:
     if folders:
         return folders[0]['id']
 
-    folder_metadata = {
+    metadata = {
         "name": name,
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_id]
     }
-    folder = service.files().create(body=folder_metadata, fields="id").execute()
+    folder = service.files().create(body=metadata, fields="id").execute()
     return folder.get("id")
 
 # --- Operaciones de bajo nivel: carga, reemplazo, eliminación, metadatos, descarga ---
 
 def _upload_file_to_folder(data: bytes, filename: str, mimetype: str, folder_id: str) -> str:
     service = get_drive_service()
-    file_metadata = {"name": filename, "parents": [folder_id]}
+    metadata = {"name": filename, "parents": [folder_id]}
     media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mimetype, resumable=True)
     created = service.files().create(
-        body=file_metadata,
+        body=metadata,
         media_body=media,
         fields="id"
     ).execute()
@@ -91,7 +111,7 @@ def upload_file(file: UploadFile, folder_type: str) -> str:
       - "product"    → settings.PRODUCTS_IMAGE_FOLDER_ID
       - "subproduct" → settings.SUBPRODUCTS_IMAGE_FOLDER_ID
     """
-    content = file.file.read()
+    data = file.file.read()
     filename = file.filename
     mimetype = file.content_type
 
@@ -104,12 +124,12 @@ def upload_file(file: UploadFile, folder_type: str) -> str:
     else:
         raise ValueError(f"Tipo de carpeta inválido: {folder_type}")
 
-    return _upload_file_to_folder(content, filename, mimetype, folder_id)
+    return _upload_file_to_folder(data, filename, mimetype, folder_id)
 
 
 def replace_file(file_id: str, new_file: UploadFile) -> str:
     """
-    Reemplaza un archivo existente dado un UploadFile:
+    Reemplaza un archivo existente dado un UploadFile.
     """
     data = new_file.file.read()
     filename = new_file.filename
@@ -167,11 +187,11 @@ def delete_subproduct_image(file_id: str) -> None:
     delete_file(file_id)
 
 
-def download_product_image(file_id: str) -> tuple[bytes, str]:
+def download_product_image(file_id: str) -> tuple[bytes,str]:
     metadata = get_file_metadata(file_id)
-    return download_file(file_id), metadata.get("name")
+    return download_file(file_id), metadata.get('name')
 
 
-def download_subproduct_image(file_id: str) -> tuple[bytes, str]:
+def download_subproduct_image(file_id: str) -> tuple[bytes,str]:
     metadata = get_file_metadata(file_id)
-    return download_file(file_id), metadata.get("name")
+    return download_file(file_id), metadata.get('name')

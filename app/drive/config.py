@@ -1,12 +1,13 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+import json
 
 class Settings(BaseSettings):
-    # Ruta donde se escribirá el archivo (si hace falta)
-    GOOGLE_SERVICE_ACCOUNT_JSON: str = "credentials/service_account.json"
+    # Ruta al JSON de credenciales en disco
+    GOOGLE_SERVICE_ACCOUNT_JSON: str 
 
-    # En entorno de producción se usará esta variable para reconstruir el archivo
+    # Alternativa: volcar aquí el JSON completo si no existe el fichero
     GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT: Optional[str] = None
 
     PROFILE_IMAGE_FOLDER_ID: str
@@ -19,11 +20,22 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ⚙️ Reconstruir archivo de credenciales si no existe y estamos en producción
-if not os.path.exists(settings.GOOGLE_SERVICE_ACCOUNT_JSON):
+# ------------------------------------------------------------
+# Si no existe el fichero en disco, pero sí hemos recibido el
+# JSON en la variable de entorno, lo reconstruimos aquí.
+# ------------------------------------------------------------
+cred_path = settings.GOOGLE_SERVICE_ACCOUNT_JSON
+
+if not os.path.isfile(cred_path):
     if settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT:
-        os.makedirs(os.path.dirname(settings.GOOGLE_SERVICE_ACCOUNT_JSON), exist_ok=True)
-        with open(settings.GOOGLE_SERVICE_ACCOUNT_JSON, "w") as f:
-            f.write(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT)
+        # Aseguramos que exista el directorio
+        os.makedirs(os.path.dirname(cred_path), exist_ok=True)
+        # Parseamos y volcamos JSON válido
+        content = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT)
+        with open(cred_path, "w") as f:
+            json.dump(content, f, ensure_ascii=False, indent=2)
     else:
-        raise ValueError("No se encontró el archivo de credenciales ni la variable GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT.")
+        raise RuntimeError(
+            "No se encontró el fichero de credenciales "
+            "ni la variable GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT."
+        )
