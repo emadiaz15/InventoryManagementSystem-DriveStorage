@@ -1,7 +1,8 @@
 from pydantic_settings import BaseSettings
 from typing import Optional,List
-import os
+from pydantic import field_validator
 import json
+import os
 
 class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_JSON: str
@@ -13,6 +14,13 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
 
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_origins(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
 
     class Config:
         env_file = ".env"
