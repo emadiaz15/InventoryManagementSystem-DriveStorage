@@ -1,13 +1,10 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional,List
 import os
 import json
 
 class Settings(BaseSettings):
-    # Ruta al JSON de credenciales en disco
-    GOOGLE_SERVICE_ACCOUNT_JSON: str 
-
-    # Alternativa: volcar aquí el JSON completo si no existe el fichero
+    GOOGLE_SERVICE_ACCOUNT_JSON: str
     GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT: Optional[str] = None
 
     PROFILE_IMAGE_FOLDER_ID: str
@@ -15,8 +12,11 @@ class Settings(BaseSettings):
     SUBPRODUCTS_IMAGE_FOLDER_ID: str
     JWT_SECRET_KEY: str
 
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]
+
     class Config:
         env_file = ".env"
+        case_sensitive = True
 
 settings = Settings()
 
