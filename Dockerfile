@@ -6,7 +6,10 @@ WORKDIR /app
 
 # 📦 Copiar e instalar dependencias
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# ✅ Instalar las dependencias con resolución más robusta
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --upgrade -r requirements.txt
 
 # 🔥 Copiar el resto del código del proyecto
 COPY . .
