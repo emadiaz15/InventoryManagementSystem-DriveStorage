@@ -18,6 +18,15 @@ router = APIRouter(
     dependencies=[Depends(auth_dependency)]
 )
 
+# Extensiones permitidas
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.mkv'}
+
+def validate_extension(filename: str):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Extensión de archivo no permitida: {ext}")
+    return ext
+
 @router.post(
     "/",
     summary="Subir imagen de perfil",
@@ -39,7 +48,7 @@ def upload_profile_image_endpoint(
             raise HTTPException(status_code=400, detail="Token no contiene 'user_id'")
 
         data = file.file.read()
-        _, ext = os.path.splitext(file.filename)
+        ext = validate_extension(file.filename)
         filename = f"{user_id}{ext}"
         file_id = _upload_file_to_folder(data, filename, file.content_type, settings.PROFILE_IMAGE_FOLDER_ID)
 
@@ -72,7 +81,7 @@ def update_profile_image_endpoint(
             raise HTTPException(status_code=400, detail="Token no contiene 'user_id'")
 
         data = new_file.file.read()
-        _, ext = os.path.splitext(new_file.filename)
+        ext = validate_extension(new_file.filename)
         filename = f"{user_id}{ext}"
         new_id = _upload_file_to_folder(data, filename, new_file.content_type, settings.PROFILE_IMAGE_FOLDER_ID)
         return {"message": "Imagen de perfil actualizada con éxito", "new_file_id": new_id}
