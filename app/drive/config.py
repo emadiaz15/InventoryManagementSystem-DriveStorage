@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     SUBPRODUCTS_IMAGE_FOLDER_ID: str
     JWT_SECRET_KEY: str
 
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]
+    ALLOWED_ORIGINS: List[str]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
