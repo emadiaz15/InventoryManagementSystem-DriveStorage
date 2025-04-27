@@ -90,36 +90,15 @@ def update_profile_image_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al actualizar imagen de perfil: {e}")
 
-
-@router.get(
-    "/{file_id}",
-    summary="Obtener metadatos de imagen de perfil",
-    description="Obtiene información (metadatos) sobre una imagen de perfil almacenada en Drive, "
-                "como nombre de archivo, tipo MIME, fecha de creación, etc.",
-    responses={
-        200: {"description": "Metadatos devueltos exitosamente"},
-        500: {"description": "Error al recuperar los metadatos"},
-    }
-)
-def get_profile_metadata_endpoint(file_id: str):
-    try:
-        metadata = get_file_metadata(file_id)
-        return metadata
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener metadatos de la imagen de perfil: {e}")
-
-
 @router.get(
     "/download/{file_id}",
     summary="Descargar imagen de perfil",
-    description="Devuelve el archivo de imagen de perfil como un stream visualizable. "
-                "Ideal para previsualizar o cargar el avatar del usuario.",
-    responses={
-        200: {"description": "Imagen devuelta exitosamente como stream"},
-        500: {"description": "Error al descargar la imagen"},
-    }
+    description="Devuelve el archivo de imagen de perfil como un stream visualizable.",
 )
-def download_profile_image_endpoint(file_id: str):
+def download_profile_image_endpoint(
+    file_id: str,
+    payload: Dict = Depends(auth_dependency)
+):
     try:
         content = download_file(file_id)
         metadata = get_file_metadata(file_id)
