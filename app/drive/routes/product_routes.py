@@ -1,11 +1,12 @@
 import io
+from app.drive.config import settings
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
 from app.drive.auth import auth_dependency
 from app.drive.uploader import (
     upload_product_image,
     list_product_images,
-    replace_product_image,
+    get_or_create_subfolder,
     download_product_image,
     delete_product_image,
 )
@@ -61,31 +62,6 @@ async def list_product_files(product_id: str):
         )
 
 
-@router.put(
-    "/{product_id}/replace/{file_id}",
-    summary="Reemplazar imagen de producto",
-    description="Reemplaza una imagen existente del producto con un nuevo archivo. "
-                "Se conserva la organización dentro del folder del producto.",
-    responses={
-        200: {"description": "Imagen reemplazada correctamente"},
-        500: {"description": "Error al reemplazar la imagen"},
-    }
-)
-async def replace_product_file(
-    product_id: str,
-    file_id: str,
-    file: UploadFile = File(...)
-):
-    try:
-        new_id = replace_product_image(file, product_id, file_id)
-        return {"message": "Imagen reemplazada exitosamente", "new_file_id": new_id}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al reemplazar la imagen: {e}"
-        )
-
-
 @router.get(
     "/{product_id}/download/{file_id}",
     summary="Descargar imagen de producto",
@@ -134,4 +110,19 @@ async def delete_product_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar la imagen: {e}"
+        )
+
+@router.post(
+    "/{product_id}/create-folder",
+    summary="Crear carpeta de producto en Drive",
+    description="Crea una carpeta en Google Drive para el producto y devuelve su folder_id.",
+)
+async def create_product_folder(product_id: str):
+    try:
+        folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
+        return {"folder_id": folder_id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al crear carpeta de producto: {e}"
         )
