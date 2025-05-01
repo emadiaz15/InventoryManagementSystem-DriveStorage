@@ -2,6 +2,7 @@ import os
 import io
 import json
 from fastapi import UploadFile
+from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2 import service_account
@@ -96,8 +97,13 @@ def download_file(file_id: str) -> bytes:
     buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
-    while not done:
-        _, done = downloader.next_chunk()
+    try:
+        while not done:
+            _, done = downloader.next_chunk()
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise FileNotFoundError(f"Archivo no encontrado: {file_id}")
+        raise
     return buffer.getvalue()
 
 # ===============================
