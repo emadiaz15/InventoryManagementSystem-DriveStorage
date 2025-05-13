@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str]
     ALLOWED_EXTENSIONS: List[str] = [
         ".jpg", ".jpeg", ".png", ".webp",
-        ".mp4", ".mov", ".avi", ".webm", ".mkv", "pdf"
+        ".mp4", ".mov", ".avi", ".webm", ".mkv", ".pdf"
     ]
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
