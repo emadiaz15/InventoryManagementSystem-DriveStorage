@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional,List
+from typing import Optional, List
 from pydantic import field_validator
 import json
 import os
@@ -14,12 +14,18 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
 
     ALLOWED_ORIGINS: List[str]
-
+    ALLOWED_EXTENSIONS: List[str] = [
+        ".jpg", ".jpeg", ".png", ".webp",
+        ".mp4", ".mov", ".avi", ".webm", ".mkv", "pdf"
+    ]
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def parse_origins(cls, v):
         if isinstance(v, str):
-            return json.loads(v)
+            try:
+                return json.loads(v)
+            except Exception:
+                raise ValueError("Formato inválido para ALLOWED_ORIGINS, se esperaba JSON válido.")
         return v
 
     class Config:
@@ -28,22 +34,20 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ------------------------------------------------------------
-# Si no existe el fichero en disco, pero sí hemos recibido el
-# JSON en la variable de entorno, lo reconstruimos aquí.
-# ------------------------------------------------------------
+# --- Reconstrucción segura del archivo de credenciales ---
 cred_path = settings.GOOGLE_SERVICE_ACCOUNT_JSON
 
 if not os.path.isfile(cred_path):
     if settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT:
-        # Aseguramos que exista el directorio
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        # Parseamos y volcamos JSON válido
-        content = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT)
+        try:
+            content = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT)
+        except json.JSONDecodeError:
+            raise RuntimeError("Contenido de GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT inválido.")
         with open(cred_path, "w") as f:
             json.dump(content, f, ensure_ascii=False, indent=2)
     else:
         raise RuntimeError(
-            "No se encontró el fichero de credenciales "
+            "❌ No se encontró el fichero de credenciales "
             "ni la variable GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT."
         )

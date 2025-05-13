@@ -1,15 +1,20 @@
 import io
-from app.drive.config import settings
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
+
 from app.drive.auth import auth_dependency
-from app.drive.uploader import (
-    upload_product_image,
-    list_product_images,
-    get_or_create_subfolder,
-    download_product_image,
-    delete_product_image,
-)
+from app.drive.config import settings
+
+# Servicios
+from app.drive.services.upload import prepare_upload, upload_file_to_folder
+from app.drive.services.download import download_file, get_file_metadata
+from app.drive.services.delete import delete_file
+from app.drive.services.folders import get_or_create_subfolder
+from app.drive.services.list_files import list_files_in_folder
+from app.drive.services.client import get_drive_service
+
+# Validación centralizada
+from app.drive.utils.validations import validate_file_extension
 
 router = APIRouter(
     prefix="/product",
@@ -17,112 +22,82 @@ router = APIRouter(
     dependencies=[Depends(auth_dependency)]
 )
 
-@router.post(
-    "/{product_id}/upload",
-    summary="Subir imagen de producto",
-    description="Sube una imagen al folder correspondiente al producto identificado por `product_id`. "
-                "El archivo se almacena en Google Drive bajo una subcarpeta específica.",
-    responses={
-        200: {"description": "Imagen subida exitosamente"},
-        500: {"description": "Error interno al subir la imagen"},
-    }
-)
-async def upload_product_file(
-    product_id: str,
-    file: UploadFile = File(...)
-):
+@router.post("/{product_id}/upload", summary="Subir imagen de producto")
+async def upload_product_file(product_id: str, file: UploadFile = File(...)):
+    """
+    📤 Sube una imagen a la carpeta específica del producto en Google Drive.
+    """
     try:
-        file_id = upload_product_image(file, product_id)
+        # 1. Validación + preparación
+        validate_file_extension(file.filename)
+        data, _, mimetype = prepare_upload(file)
+
+        # 2. Obtener carpeta del producto
+        service = get_drive_service()
+        folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
+
+        # 3. Subida al folder
+        file_id = upload_file_to_folder(data, file.filename, mimetype, folder_id, service)
+
         return {"message": "Imagen de producto subida con éxito", "file_id": file_id}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al subir la imagen: {e}"
+            detail=f"Error al subir la imagen: {str(e)}"
         )
 
-
-@router.get(
-    "/{product_id}/list",
-    summary="Listar imágenes del producto",
-    description="Devuelve una lista con los metadatos de todas las imágenes asociadas al producto `product_id`. "
-                "Incluye nombre de archivo, tipo MIME, fecha de creación, etc.",
-    responses={
-        200: {"description": "Lista de imágenes devuelta correctamente"},
-        500: {"description": "Error al obtener la lista de imágenes"},
-    }
-)
+@router.get("/{product_id}/list", summary="Listar imágenes del producto")
 async def list_product_files(product_id: str):
     try:
-        images = list_product_images(product_id)
+        service = get_drive_service()
+        folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
+        images = list_files_in_folder(folder_id, service)
         return {"images": images}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al listar imágenes: {e}"
+            detail=f"Error al listar imágenes: {str(e)}"
         )
-
-
-@router.get(
-    "/{product_id}/download/{file_id}",
-    summary="Descargar imagen de producto",
-    description="Permite descargar una imagen específica del producto como archivo adjunto. "
-                "Ideal para backup o visualización fuera del sistema.",
-    responses={
-        200: {"description": "Imagen descargada exitosamente"},
-        500: {"description": "Error al descargar la imagen"},
-    }
-)
-async def download_product_file(
-    product_id: str,
-    file_id: str
-):
+        
+        
+@router.get("/{product_id}/download/{file_id}", summary="Descargar imagen de producto")
+async def download_product_file(product_id: str, file_id: str, _: dict = Depends(auth_dependency)):
     try:
-        data, filename = download_product_image(file_id)
+        service = get_drive_service()
+        expected_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
+
+        metadata = get_file_metadata(file_id, service)
+        parents = metadata.get("parents") or []
+
+        if expected_folder_id not in parents:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Archivo no pertenece al producto {product_id}"
+            )
+
+        data = download_file(file_id, service)
+        mime_type = metadata.get("mimeType", "application/octet-stream")
+        filename = metadata.get("name")
+
         return StreamingResponse(
             io.BytesIO(data),
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            media_type=mime_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'}
         )
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en Google Drive")
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al descargar la imagen: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error inesperado al descargar archivo: {str(e)}")
 
 
-@router.delete(
-    "/{product_id}/delete/{file_id}",
-    summary="Eliminar imagen de producto",
-    description="Elimina permanentemente una imagen del producto del almacenamiento en Google Drive.",
-    responses={
-        200: {"description": "Imagen eliminada correctamente"},
-        500: {"description": "Error al eliminar la imagen"},
-    }
-)
-async def delete_product_file(
-    product_id: str,
-    file_id: str
-):
+@router.delete("/{product_id}/delete/{file_id}", summary="Eliminar imagen de producto")
+async def delete_product_file(product_id: str, file_id: str):
     try:
-        delete_product_image(file_id)
+        delete_file(file_id)
         return {"message": "Imagen eliminada exitosamente"}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al eliminar la imagen: {e}"
-        )
-
-@router.post(
-    "/{product_id}/create-folder",
-    summary="Crear carpeta de producto en Drive",
-    description="Crea una carpeta en Google Drive para el producto y devuelve su folder_id.",
-)
-async def create_product_folder(product_id: str):
-    try:
-        folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID)
-        return {"folder_id": folder_id}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al crear carpeta de producto: {e}"
+            detail=f"Error al eliminar la imagen: {str(e)}"
         )
