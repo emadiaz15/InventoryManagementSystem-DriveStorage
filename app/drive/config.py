@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     PROFILE_IMAGE_FOLDER_ID: str
     PRODUCTS_IMAGE_FOLDER_ID: str
-    SUBPRODUCTS_IMAGE_FOLDER_ID: str
+    SUBPRODUCTS_IMAGE_FOLDER_ID: Optional[str] = None
     JWT_SECRET_KEY: str
 
     ALLOWED_ORIGINS: List[str]
