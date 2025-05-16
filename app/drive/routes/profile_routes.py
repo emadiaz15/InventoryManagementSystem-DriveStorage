@@ -17,16 +17,21 @@ from app.drive.services.delete import delete_file
 # 📦 Inicializa el router para imágenes de perfil
 router = APIRouter(
     prefix="/profile",
-    tags=["Imagen de Perfil"],
-    dependencies=[Depends(auth_dependency)]  # Aplica validación de token JWT a todos los endpoints
+    tags=["Imagen de Perfil"]
 )
 
 # 🎯 Generador del nombre de archivo de perfil
 def get_profile_filename(user_id: str, ext: str) -> str:
     return f"{user_id}{ext}"
 
-@router.post("/", summary="Subir imagen de perfil")
-def upload_profile_image(file: UploadFile = File(...), payload: Dict = Depends(auth_dependency)):
+@router.post(
+    "/",
+    summary="Subir imagen de perfil"
+)
+def upload_profile_image(
+    file: UploadFile = File(...),
+    payload: Dict = Depends(auth_dependency)
+):
     """
     📤 Sube una imagen de perfil a la carpeta predefinida en Google Drive.
     El nombre del archivo será el ID del usuario + extensión.
@@ -50,8 +55,15 @@ def upload_profile_image(file: UploadFile = File(...), payload: Dict = Depends(a
         raise HTTPException(status_code=500, detail=f"Error al subir imagen de perfil: {str(e)}")
 
 
-@router.put("/{file_id}", summary="Actualizar imagen de perfil")
-def update_profile_image(file_id: str, new_file: UploadFile = File(...), payload: Dict = Depends(auth_dependency)):
+@router.put(
+    "/{file_id}",
+    summary="Actualizar imagen de perfil"
+)
+def update_profile_image(
+    file_id: str,
+    new_file: UploadFile = File(...),
+    payload: Dict = Depends(auth_dependency)
+):
     """
     🔁 Reemplaza la imagen de perfil existente en Google Drive manteniendo el mismo ID.
     """
@@ -72,8 +84,14 @@ def update_profile_image(file_id: str, new_file: UploadFile = File(...), payload
         raise HTTPException(status_code=500, detail=f"Error al actualizar imagen: {str(e)}")
 
 
-@router.get("/download/{file_id}", summary="Descargar imagen de perfil")
-def download_profile_image(file_id: str, _: Dict = Depends(auth_dependency)):
+@router.get(
+    "/download/{file_id}",
+    summary="Descargar imagen de perfil"
+)
+def download_profile_image(
+    file_id: str,
+    payload: Dict = Depends(auth_dependency)
+):
     """
     📥 Descarga una imagen de perfil desde Google Drive.
     """
@@ -94,8 +112,14 @@ def download_profile_image(file_id: str, _: Dict = Depends(auth_dependency)):
         raise HTTPException(status_code=500, detail=f"Error al descargar imagen: {str(e)}")
 
 
-@router.delete("/delete/{file_id}", summary="Eliminar imagen de perfil")
-def delete_profile_image(file_id: str, _: Dict = Depends(auth_dependency)):
+@router.delete(
+    "/delete/{file_id}",
+    summary="Eliminar imagen de perfil"
+)
+def delete_profile_image(
+    file_id: str,
+    payload: Dict = Depends(auth_dependency)
+):
     """
     🗑️ Elimina una imagen de perfil de Google Drive.
     """
@@ -110,4 +134,3 @@ def delete_profile_image(file_id: str, _: Dict = Depends(auth_dependency)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error inesperado al eliminar: {str(e)}")
-
