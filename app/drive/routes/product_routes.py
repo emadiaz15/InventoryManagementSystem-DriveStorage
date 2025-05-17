@@ -23,7 +23,7 @@ router = APIRouter(
 )
 
 @router.post("/{product_id}/upload", summary="Subir imagen de producto")
-async def upload_product_file(product_id: str, file: UploadFile = File(...)):
+async def upload_product_file(product_id: str, file: UploadFile = File(...), _: dict = Depends(auth_dependency)):
     """
     📤 Sube una imagen a la carpeta específica del producto en Google Drive.
     """
@@ -47,7 +47,7 @@ async def upload_product_file(product_id: str, file: UploadFile = File(...)):
         )
 
 @router.get("/{product_id}/list", summary="Listar imágenes del producto")
-async def list_product_files(product_id: str):
+async def list_product_files(product_id: str, _: dict = Depends(auth_dependency)):
     try:
         service = get_drive_service()
         folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
@@ -92,7 +92,7 @@ async def download_product_file(product_id: str, file_id: str, _: dict = Depends
 
 
 @router.delete("/{product_id}/delete/{file_id}", summary="Eliminar imagen de producto")
-async def delete_product_file(product_id: str, file_id: str):
+async def delete_product_file(product_id: str, file_id: str, _: dict = Depends(auth_dependency)):
     try:
         delete_file(file_id)
         return {"message": "Imagen eliminada exitosamente"}
