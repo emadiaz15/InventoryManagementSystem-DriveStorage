@@ -22,7 +22,8 @@ router = APIRouter(
 )
 
 @router.post("/{product_id}/{subproduct_id}/upload", summary="Subir imagen de subproducto")
-async def upload_subproduct_file(product_id: str, subproduct_id: str, file: UploadFile = File(...)):
+async def upload_subproduct_file(product_id: str, subproduct_id: str, file: UploadFile = File(...),_: dict = Depends(auth_dependency)
+):
     """
     📤 Sube una imagen a /PRODUCT_ID/SUBPRODUCT_ID/ en Google Drive.
     """
@@ -50,7 +51,11 @@ async def upload_subproduct_file(product_id: str, subproduct_id: str, file: Uplo
         )
 
 @router.get("/{product_id}/{subproduct_id}/list", summary="Listar imágenes de subproducto")
-async def list_subproduct_files(product_id: str, subproduct_id: str):
+async def list_subproduct_files(
+    product_id: str,
+    subproduct_id: str,
+    _: dict = Depends(auth_dependency)
+):
     try:
         service = get_drive_service()
         product_folder = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
@@ -61,13 +66,28 @@ async def list_subproduct_files(product_id: str, subproduct_id: str):
 
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error al listar imágenes: {str(e)}"
         )
 
+
 @router.put("/{product_id}/{subproduct_id}/replace/{file_id}", summary="Reemplazar imagen de subproducto")
-async def replace_subproduct_file(product_id: str, subproduct_id: str, file_id: str, file: UploadFile = File(...)):
+async def replace_subproduct_file(
+    product_id: str,
+    subproduct_id: str,
+    file_id: str,
+    file: UploadFile = File(...),
+    _: dict = Depends(auth_dependency)
+):
     try:
+        service = get_drive_service()
+        product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
+        subproduct_folder_id = get_or_create_subfolder(subproduct_id, product_folder_id, service)
+
+        metadata = get_file_metadata(file_id, service)
+        if subproduct_folder_id not in metadata.get("parents", []):
+            raise HTTPException(403, detail="El archivo no pertenece al subproducto indicado.")
+
         ext = validate_file_extension(file.filename)
         filename = f"{subproduct_id}{ext}"
 
@@ -76,12 +96,14 @@ async def replace_subproduct_file(product_id: str, subproduct_id: str, file_id: 
 
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error al reemplazar la imagen: {str(e)}"
         )
 
+
 @router.get("/{product_id}/{subproduct_id}/download/{file_id}", summary="Descargar imagen de subproducto")
-async def download_subproduct_file(product_id: str, subproduct_id: str, file_id: str):
+async def download_subproduct_file(product_id: str, subproduct_id: str, file_id: str, _: dict = Depends(auth_dependency)
+):
     try:
         service = get_drive_service()
 
@@ -114,12 +136,26 @@ async def download_subproduct_file(product_id: str, subproduct_id: str, file_id:
         )
 
 @router.delete("/{product_id}/{subproduct_id}/delete/{file_id}", summary="Eliminar imagen de subproducto")
-async def delete_subproduct_file(product_id: str, subproduct_id: str, file_id: str):
+async def delete_subproduct_file(
+    product_id: str,
+    subproduct_id: str,
+    file_id: str,
+    _: dict = Depends(auth_dependency)
+):
     try:
+        service = get_drive_service()
+        product_folder_id = get_or_create_subfolder(product_id, settings.PRODUCTS_IMAGE_FOLDER_ID, service)
+        subproduct_folder_id = get_or_create_subfolder(subproduct_id, product_folder_id, service)
+
+        metadata = get_file_metadata(file_id, service)
+        if subproduct_folder_id not in metadata.get("parents", []):
+            raise HTTPException(status_code=403, detail="Archivo no pertenece a este subproducto")
+
         delete_file(file_id)
         return {"message": "Imagen eliminada exitosamente"}
+
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error al eliminar la imagen: {str(e)}"
         )
